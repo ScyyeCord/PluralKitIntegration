@@ -41,24 +41,32 @@ export function isOwnPkMessage(message: Message, pk: PKAPI): boolean {
     return (localSystem??[]).map(author => author.member.id).some(id => id === authorMemberID);
 }
 
-export function replaceTags(content: string, message: Message, localSystemData: string, pk: PKAPI) {
+export function replaceTags(content: string, message: Message, webhookName: string, pk: PKAPI) {
     const author = getAuthorOfMessage(message, pk);
 
     if (!author?.member)
         throw new TypeError("The member who wrote this message cannot be found! Were they deleted?");
 
-    const localSystem: Author[] = JSON.parse(localSystemData);
-
     const messageGuildID = ChannelStore.getChannel(message.channel_id).guild_id;
+
+    var systemSettings: SystemGuildSettings = undefined;
+    if (author.systemSettings)
+        systemSettings = author.systemSettings[messageGuildID];
+
+    var memberSettings: MemberGuildSettings = undefined;
+    if (author.memberSettings)
+        memberSettings = author.guildSettings[messageGuildID];
+
     const { system } = author;
 
     // prioritize guild settings, then system/member settings
-    const { tag } = system;
-    const name = author.member.display_name ?? author.member.name;
-    const avatar = author.member.avatar;
+    const { tag } = systemSettings ?? system;
+    const name = memberSettings?.display_name ?? author.member.display_name ?? author.member.name;
+    const avatar = memberSettings?.avatar_url ?? author.member.avatar;
 
     return content
         .replace(/{tag}/g, tag??"")
+        .replace(/{webhookName}/g, webhookName??"")
         .replace(/{name}/g, name??"")
         .replace(/{memberid}/g, author.member.id??"")
         .replace(/{pronouns}/g, author.member.pronouns??"")

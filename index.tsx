@@ -136,14 +136,14 @@ export const settings = definePluginSettings({
     displayOther: {
         type: OptionType.STRING,
         description: "How to display proxied users (from other systems) in chat\n" +
-            "{tag}, {name}, {memberId}, {pronouns}, {systemId}, {systemName}, {color}, {avatar}, are valid variables (All lowercase)",
-        default: "{name}{tag}",
+            "{tag}, {webhookName}, {name}, {memberId}, {pronouns}, {systemId}, {systemName}, {color}, {avatar}, are valid variables (All lowercase)",
+        default: "{webhookName}",
     },
     displayLocal: {
         type: OptionType.STRING,
         description: "How to display proxied users (from your system, defaults to displayOther if blank) in chat\n" +
-            "{tag}, {name}, {memberId}, {pronouns}, {systemId}, {systemName}, {color}, {avatar}, are valid variables (All lowercase)",
-        default: "",
+            "{tag}, {webhookName}, {name}, {memberId}, {pronouns}, {systemId}, {systemName}, {color}, {avatar}, are valid variables (All lowercase)",
+        default: "{name}{tag}",
     },
     load: {
         type: OptionType.COMPONENT,
@@ -288,8 +288,9 @@ export default definePlugin({
 
     renderUsername: ({ author, decorations, message, isRepliedMessage, withMentionPrefix }) => {
         const prefix = isRepliedMessage && withMentionPrefix ? "@" : "";
+
         try {
-            const discordUsername = author.nick??author.displayName??author.username;
+            const discordUsername = author.nick ?? message.author.globalName ?? message.author.username;
 
             if (!isPk(message))
                 return <>{prefix}{discordUsername}</>;
@@ -313,12 +314,29 @@ export default definePlugin({
             if (!pkAuthor.member)
                 return <span style={{color: '#9A2D22'}}>{prefix}{discordUsername}</span>;
 
+            // A valid member exists, set the author to not be a bot so we can link back to the sender
+            message.author.bot = false;
+
             let color: string = "888888";
 
             color = pkAuthor.member?.color ?? pkAuthor.system?.color ?? color;
 
-            const display = isOwnPkMessage(message, pluralKit.api) && settings.store.displayLocal !== "" ? settings.store.displayLocal : settings.store.displayOther;
-            const resultText = replaceTags(display, message, settings.store.data, pluralKit.api);
+            const isMe = isOwnPkMessage(message, pluralKit.api);
+
+            if (isMe) {
+                const messageGuildID = ChannelStore.getChannel(msg.channel).guild_id;
+
+                author.member.getGuildSettings(messageGuildID).then(guildSettings => {
+                    author.guildSettings.set(messageGuildID, guildSettings);
+                });
+
+                author.system.getGuildSettings(messageGuildID).then(systemSettings => {
+                    author.systemSettings.set(messageGuildID, systemSettings);
+                });
+            }
+
+            const display = isMe && settings.store.displayLocal !== "" ? settings.store.displayLocal : settings.store.displayOther;
+            const resultText = replaceTags(display, message, discordUsername, pluralKit.api);
 
             return <span style={{color: `#${color}`}}>{resultText}</span>;
         } catch (e) {
