@@ -38,7 +38,9 @@ import { PKAPI } from "./api";
 import pluralKit from "./index";
 import {
     Author,
+    authors,
     deleteMessage,
+    generateAuthorData,
     getAuthorOfMessage,
     isOwnPkMessage,
     isPk,
@@ -208,14 +210,14 @@ export default definePlugin({
             find: "type:\"USER_PROFILE_MODAL_OPEN\"",
             replacement: {
                 match: /let{userId:/,
-                replace: "e.userId=$self.getUserPopoutMessageSender()?.id ?? e.userId;$&"
+                replace: "e.userId=$self.getUserPopoutMessageSender(e)?.id ?? e.userId;$&"
             }
         },
         {
             find: "getRelationshipType(t.id):",
             replacement: {
                 match: /user:t/,
-                replace: "t=$self.getUserPopoutMessageSender() ?? e.user"
+                replace: "t=$self.getUserPopoutMessageSender(e) ?? e.user"
             }
         },
         {
@@ -245,8 +247,22 @@ export default definePlugin({
         },
     ],
 
-    getUserPopoutMessageSender: () => {
-        return userPopoutMessageSender;
+    getUserPopoutMessageSender: ({channelId, messageId, user}) => {
+        if (user) {
+            const authorData = generateAuthorData(user);
+
+            if (authors[authorData])
+                return userPopoutMessageSender;
+        }
+
+        if (channelId && messageId) {
+            const author = getAuthorOfMessage(MessageStore.getMessage(channelId, messageId), pluralKit.api);
+
+            if (author?.member)
+                return userPopoutMessageSender;
+        }
+
+        return undefined;
     },
 
     renderUserGuildPopout: (message: Message) => {

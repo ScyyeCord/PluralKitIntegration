@@ -123,12 +123,12 @@ export function deleteMessage(msg: Message) {
     addReaction(msg.channel_id, msg.id, { name: "❌" });
 }
 
-export function generateAuthorData(message: Message) {
-    return `${message.author.username}##${message.author.avatar}`;
+export function generateAuthorData(discordAuthor) {
+    return `${discordAuthor.username}##${discordAuthor.avatar}`;
 }
 
 export function getAuthorOfMessage(message: Message, pk: PKAPI) {
-    const authorData = generateAuthorData(message);
+    const authorData = generateAuthorData(message.author);
     let author: Author = authors[authorData]??undefined;
 
     if (author != undefined)
