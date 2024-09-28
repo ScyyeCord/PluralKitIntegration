@@ -37,7 +37,7 @@ export function isOwnPkMessage(message: Message, pk: PKAPI): boolean {
     if (!isPk(message)) return false;
     if ([[], {}, undefined].includes(localSystem)) return false;
 
-    const authorMemberID: string = getAuthorOfMessage(message, pk)?.member;
+    const authorMemberID: string = getAuthorOfMessage(message, pk)?.member.id;
     return (localSystem??[]).map(author => author.member.id).some(id => id === authorMemberID);
 }
 

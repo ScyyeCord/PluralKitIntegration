@@ -71,8 +71,8 @@ function GetAuthorMenuItem(author: Author, message: Message) {
         />);
 }
 
-const ctxMenuPatch: NavContextMenuPatchCallback = (children, {msg}) => {
-    if (!isOwnPkMessage(msg, pluralKit.api)) return;
+const ctxMenuPatch: NavContextMenuPatchCallback = (children, {message}) => {
+    if (!isOwnPkMessage(message, pluralKit.api)) return;
 
     // Place at the beginning of the second menu section
     children[3]?.props.children.splice(0, 0,
@@ -84,11 +84,11 @@ const ctxMenuPatch: NavContextMenuPatchCallback = (children, {msg}) => {
                     <div className="edit">Edit Message</div>
                 </div>
             }
-            action={() => MessageActions.startEditMessage(msg.channel_id, msg.id, msg.content)}
+            action={() => MessageActions.startEditMessage(message.channel_id, message.id, message.content)}
         />
     );
 
-    var proxyMenuItems = localSystem.map(author => GetAuthorMenuItem(author, msg));
+    var proxyMenuItems = localSystem.map(author => GetAuthorMenuItem(author, message));
 
     // Place right after the apps dropdown
     children[4]?.props.children.splice(4, 0,
@@ -120,7 +120,7 @@ const ctxMenuPatch: NavContextMenuPatchCallback = (children, {msg}) => {
                     <div className="delete">Delete Message</div>
                 </div>
             }
-            action={() => deleteMessage(msg)}
+            action={() => deleteMessage(message)}
         />;
 };
 
@@ -338,7 +338,7 @@ export default definePlugin({
             const isMe = isOwnPkMessage(message, pluralKit.api);
 
             if (isMe) {
-                const messageGuildID = ChannelStore.getChannel(msg.channel).guild_id;
+                const messageGuildID = ChannelStore.getChannel(message.channel).guild_id;
 
                 author.member.getGuildSettings(messageGuildID).then(guildSettings => {
                     author.guildSettings.set(messageGuildID, guildSettings);
