@@ -208,7 +208,7 @@ export default definePlugin({
             find: "type:\"USER_PROFILE_MODAL_OPEN\"",
             replacement: {
                 match: /let{userId:/,
-                replace: "e.userId=$self.getUserPopoutMessageSender().id;$&"
+                replace: "e.userId=$self.getUserPopoutMessageSender()?.id ?? e.userId;$&"
             }
         },
         {
@@ -298,8 +298,6 @@ export default definePlugin({
             // PK mesasage, disable bot tag
             if (decorations)
                 decorations[0] = null;
-            message.bot = false;
-            message.author.bot = false;
 
             if (!settings.store.colorNames)
                 return <>{prefix}{discordUsername}</>;
