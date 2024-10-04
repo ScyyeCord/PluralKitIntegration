@@ -337,9 +337,8 @@ export default definePlugin({
 
             const isMe = isOwnPkMessage(message, pluralKit.api);
 
-            if (isMe) {
-                const messageGuildID = ChannelStore.getChannel(message.channel).guild_id;
-
+            const messageGuildID = ChannelStore.getChannel(message.channel)?.guild_id;
+            if (isMe && messageGuildID) {
                 author.member.getGuildSettings(messageGuildID).then(guildSettings => {
                     author.guildSettings.set(messageGuildID, guildSettings);
                 });
