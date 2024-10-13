@@ -48,7 +48,7 @@ import MemberGuildSettings from "./memberGuildSettings";
 
 const parser = chrono.casual.clone();
 parser.refiners.push({
-    refine: (ctx, res) => {
+    refine: (_ctx, res) => {
         res.forEach(r => {
             if(!r.start.isCertain("year")) r.start.assign("year", 2004);
         });
@@ -128,7 +128,7 @@ const KEYS: any = {
         err: "Birthday must be a valid date",
         transform: (d: string | Date) => {
             if(!d) return d;
-            var date;
+            var date: Date | null;
             if(!(d instanceof Date)) date = parser.parseDate(d);
             else date = d;
             return formatDate(date!);

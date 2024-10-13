@@ -82,7 +82,7 @@ export default class Message implements IMessage {
         this.#api = api;
         for(const k in data) {
             if(KEYS[k]) {
-                if(KEYS[k].init) data[k] = KEYS[k].init(data[k]);
+                if(KEYS[k].init) data[k] = KEYS[k].init(data[k], api);
                 this[k] = data[k];
             }
         }

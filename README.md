@@ -9,13 +9,13 @@
 2. Display names differently for systems
 3. Edit/Delete buttons on your own proxied messages
 4. Support for both users of PK, and not
+5. Reproxying context menu
 
 ## Planned Features:
 
 1. Compat with showmeyourname
 2. PK badge (compat with moreUserTags)
 3. Blocking pk users
-4. Reproxy modal, or some easy way to reproxy messages
-5. Option to use role colours rather than member colours
-6. Profile-Popout support
+4. Option to use role colours rather than member colours
+5. Profile-Popout support
 

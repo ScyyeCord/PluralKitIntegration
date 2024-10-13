@@ -16,14 +16,19 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+import { NavContextMenuPatchCallback } from "@api/ContextMenu";
+import { addDecoration } from "@api/MessageDecorations";
 import { addPreEditListener } from "@api/MessageEvents";
 import { addButton, removeButton } from "@api/MessagePopover";
 import { definePluginSettings } from "@api/Settings";
-import { DeleteIcon } from "@components/Icons";
+import ErrorBoundary from "@components/ErrorBoundary";
+import { DeleteIcon, PencilIcon } from "@components/Icons";
 import definePlugin, { OptionType, StartAt } from "@utils/types";
 import {
+    Avatar,
     Button,
     ChannelStore,
+    Menu,
     MessageActions,
     MessageStore, UserStore
 } from "@webpack/common";
@@ -32,37 +37,115 @@ import { Message } from "discord-types/general";
 import { PKAPI } from "./api";
 import pluralKit from "./index";
 import {
+    Author,
+    authors,
     deleteMessage,
+    generateAuthorData,
     getAuthorOfMessage,
     isOwnPkMessage,
     isPk,
     loadAuthors, loadData,
+    localSystem,
     replaceTags,
 } from "./utils";
 
-const EditIcon = () => {
-    return <svg role={"img"} width={"16"} height={"16"} fill={"none"} viewBox={"0 0 24 24"}>
-        <path fill={"currentColor"} d={"m13.96 5.46 4.58 4.58a1 1 0 0 0 1.42 0l1.38-1.38a2 2 0 0 0 0-2.82l-3.18-3.18a2 2 0 0 0-2.82 0l-1.38 1.38a1 1 0 0 0 0 1.42ZM2.11 20.16l.73-4.22a3 3 0 0 1 .83-1.61l7.87-7.87a1 1 0 0 1 1.42 0l4.58 4.58a1 1 0 0 1 0 1.42l-7.87 7.87a3 3 0 0 1-1.6.83l-4.23.73a1.5 1.5 0 0 1-1.73-1.73Z"}></path>
-    </svg>;
+function GetAuthorMenuItem(author: Author, message: Message) {
+    return (
+        <Menu.MenuItem
+            id={"pk_menu_item_" + author.member.uuid}
+            iconLeft={() =>
+                (<Avatar className="pk-menu-icon" src={author.member.avatar_url ?? author.system.avatar_url ?? "https://pluralkit.me/favicon.png"} size="SIZE_20"/>)
+            }
+            label={
+                <div className="pk-menu-item">
+                    <div className="pk-menu-item">{author.member.display_name}</div>
+                </div>
+            }
+            action={() => {
+                const { guild_id } = ChannelStore.getChannel(message.channel_id);
+                MessageActions.sendMessage(message.channel_id, // Replace with pluralkit's channel ID once reproxying works in DMs: 1276796961227276338
+                                           {content: "pk;reproxy https://discord.com/channels/" + guild_id + "/" + message.channel_id + "/" + message.id + " " + author.member.name},
+                                           false);
+                }
+            }
+        />);
+}
+
+const ctxMenuPatch: NavContextMenuPatchCallback = (children, {message}) => {
+    if (!isOwnPkMessage(message, pluralKit.api)) return;
+
+    // Place at the beginning of the second menu section
+    children[3]?.props.children.splice(0, 0,
+        <Menu.MenuItem
+            id="pk-edit"
+            icon={PencilIcon}
+            label={
+                <div className="edit">
+                    <div className="edit">Edit Message</div>
+                </div>
+            }
+            action={() => MessageActions.startEditMessage(message.channel_id, message.id, message.content)}
+        />
+    );
+
+    var proxyMenuItems = localSystem.map(author => GetAuthorMenuItem(author, message));
+
+    // Place right after the apps dropdown
+    children[4]?.props.children.splice(4, 0,
+        <Menu.MenuItem
+            id="pk-reproxy"
+            label={
+                <div className="reproxy">
+                    <div className="reproxy">Reproxy As...</div>
+                </div>
+            }
+            listClassName="pk-reproxy-list"
+            children={proxyMenuItems}
+        />
+    );
+
+    // Override the regular delete button if it's not present
+    if (children[5] == null)
+        return;
+    if (children[5].props.children[2] != null)
+        return;
+
+    children[5].props.children[2] =
+        <Menu.MenuItem
+            id="pk-delete"
+            icon={DeleteIcon}
+            color="danger"
+            label={
+                <div className="delete">
+                    <div className="delete">Delete Message</div>
+                </div>
+            }
+            action={() => deleteMessage(message)}
+        />;
 };
 
 export const settings = definePluginSettings({
     colorNames: {
         type: OptionType.BOOLEAN,
         description: "Display member colors in their names in chat",
+        default: true
+    },
+    pkIcon: {
+        type: OptionType.BOOLEAN,
+        description: "Enables a PluralKit icon next to proxied messages",
         default: false
     },
     displayOther: {
         type: OptionType.STRING,
         description: "How to display proxied users (from other systems) in chat\n" +
-            "{tag}, {name}, {memberId}, {pronouns}, {systemId}, {systemName}, {color}, {avatar}, {messageCount}, {systemMessageCount} are valid variables (All lowercase)",
-        default: "{name}{tag}",
+            "{tag}, {webhookName}, {name}, {memberId}, {pronouns}, {systemId}, {systemName}, {color}, {avatar}, are valid variables (All lowercase)",
+        default: "{webhookName}",
     },
     displayLocal: {
         type: OptionType.STRING,
         description: "How to display proxied users (from your system, defaults to displayOther if blank) in chat\n" +
-            "{tag}, {name}, {memberId}, {pronouns}, {systemId}, {systemName}, {color}, {avatar}, {messageCount}, {systemMessageCount} are valid variables (All lowercase)",
-        default: "",
+            "{tag}, {webhookName}, {name}, {memberId}, {pronouns}, {systemId}, {systemName}, {color}, {avatar}, are valid variables (All lowercase)",
+        default: "{name}{tag}",
     },
     load: {
         type: OptionType.COMPONENT,
@@ -73,6 +156,11 @@ export const settings = definePluginSettings({
         },
         description: "Load local system into memory"
     },
+    token: {
+        type: OptionType.STRING,
+        description: "Your PluralKit Token, required for many actions",
+        default: ""
+    },
     printData: {
         type: OptionType.COMPONENT,
         component: () => {
@@ -81,13 +169,13 @@ export const settings = definePluginSettings({
             }}>Print Data</Button>;
         },
         description: "Print stored data to console",
-        hidden: IS_DEV // showDebug
+        hidden: !IS_DEV // showDebug
     },
     data: {
         type: OptionType.STRING,
         description: "Datastore",
         default: "{}",
-        hidden: IS_DEV // showDebug
+        hidden: !IS_DEV // showDebug
     }
 });
 
@@ -100,9 +188,47 @@ export default definePlugin({
     }],
     startAt: StartAt.WebpackReady,
     settings,
+    contextMenus: {
+        "message": ctxMenuPatch
+    },
     patches: [
         {
-            find: '?"@":"")',
+            find: ".hasAvatarForGuild(null==",
+            replacement: {
+                match: /\i\.pronouns/,
+                replace: "$self.tryGetPkPronouns()??$&"
+            }
+        },
+        {
+            find: ".hasAvatarForGuild(null==",
+            replacement: {
+                match: /return\(0/,
+                replace: "if(t){t.bio=$self.tryGetPkBio();}$&"
+            }
+        },
+        {
+            find: "type:\"USER_PROFILE_MODAL_OPEN\"",
+            replacement: {
+                match: /let{userId:/,
+                replace: "e.userId=$self.getUserPopoutMessageSender(e)?.id ?? e.userId;$&"
+            }
+        },
+        {
+            find: "getRelationshipType(t.id):",
+            replacement: {
+                match: /user:t/,
+                replace: "t=$self.getUserPopoutMessageSender(e) ?? e.user"
+            }
+        },
+        {
+            find: "renderUserGuildPopout: channel should never be null",
+            replacement: {
+                match: /if/,
+                replace: "$self.renderUserGuildPopout(t);$&"
+            }
+        },
+        {
+            find: '?"@":""',
             replacement: {
                 match: /(?<=onContextMenu:\i,children:).*?\)}/,
                 replace: "$self.renderUsername(arguments[0])}"
@@ -121,31 +247,118 @@ export default definePlugin({
         },
     ],
 
-    isOwnMessage: (message: Message) => isOwnPkMessage(message) || message.author.id === UserStore.getCurrentUser().id,
+    getUserPopoutMessageSender: ({channelId, messageId, user}) => {
+        if (user) {
+            const authorData = generateAuthorData(user);
 
-    renderUsername: ({ author, message, isRepliedMessage, withMentionPrefix }) => {
+            if (authors[authorData])
+                return userPopoutMessageSender;
+        }
+
+        if (channelId && messageId) {
+            const author = getAuthorOfMessage(MessageStore.getMessage(channelId, messageId), pluralKit.api);
+
+            if (author?.member)
+                return userPopoutMessageSender;
+        }
+
+        return undefined;
+    },
+
+    renderUserGuildPopout: (message: Message) => {
+        if (message == userPopoutMessage)
+            return;
+
+        userPopoutMessage = message;
+        pluralKit.api.getMessage({ message: message.id }).then(msg => {
+            const sender = msg.sender ?? message.author.id;
+            userPopoutMessageSender = UserStore.getUser(sender);
+        });
+    },
+
+    tryGetPkPronouns: () => {
+        if (!isPk(userPopoutMessage))
+            return null;
+
+        const pkAuthor = getAuthorOfMessage(userPopoutMessage, pluralKit.api);
+
+        if (pkAuthor?.member === undefined)
+            return null;
+
+        return pkAuthor.member.pronouns ?? pkAuthor.system.pronouns;
+    },
+
+    tryGetPkBio: () => {
+        if (!isPk(userPopoutMessage))
+            return "";
+
+        const pkAuthor = getAuthorOfMessage(userPopoutMessage, pluralKit.api);
+
+        if (pkAuthor?.member === undefined)
+            return "";
+
+        return pkAuthor.member.description ?? pkAuthor.system.description;
+    },
+
+    isOwnMessage: (message: Message) => isOwnPkMessage(message, pluralKit.api) || message.author.id === UserStore.getCurrentUser().id,
+
+    renderUsername: ({ author, decorations, message, isRepliedMessage, withMentionPrefix }) => {
         const prefix = isRepliedMessage && withMentionPrefix ? "@" : "";
+
         try {
-            const discordUsername = author.nick??author.displayName??author.username;
-            if (!isPk(message)) {
+            let discordUsername = author.nick ?? message.author.globalName ?? message.author.username;
+
+            if (!isPk(message))
                 return <>{prefix}{discordUsername}</>;
-            }
 
+            // PK mesasage, disable bot tag
+            if (decorations)
+                decorations[0] = null;
 
-            let color: string = "666666";
+            discordUsername = message.author.username ?? author.nick ?? message.author.globalName;
+
+            // U-FE0F is the Emoji variant selector. This converts pictographics to emoticons
+            discordUsername = discordUsername.replace(/\p{Emoji}/ug, "$&\uFE0F")
+
+            if (!settings.store.colorNames)
+                return <>{prefix}{discordUsername}</>;
+
             const pkAuthor = getAuthorOfMessage(message, pluralKit.api);
 
-            if (pkAuthor.member && settings.store.colorNames) {
-                color = pkAuthor.member.color??color;
+            // A PK message without an author. It's likely still loading
+            if (!pkAuthor)
+                return <span style={{color: '#555555'}}>{prefix}{discordUsername}</span>;
+
+            // A PK message that contains an author but no member, meaning the member was likely deleted
+            if (!pkAuthor.member)
+                return <span style={{color: '#9A2D22'}}>{prefix}{discordUsername}</span>;
+
+            // A valid member exists, set the author to not be a bot so we can link back to the sender
+            message.author.bot = false;
+
+            let color: string = "888888";
+
+            color = pkAuthor.member?.color ?? pkAuthor.system?.color ?? color;
+
+            const isMe = isOwnPkMessage(message, pluralKit.api);
+
+            const messageGuildID = ChannelStore.getChannel(message.channel)?.guild_id;
+            if (isMe && messageGuildID) {
+                author.member.getGuildSettings(messageGuildID).then(guildSettings => {
+                    author.guildSettings.set(messageGuildID, guildSettings);
+                });
+
+                author.system.getGuildSettings(messageGuildID).then(systemSettings => {
+                    author.systemSettings.set(messageGuildID, systemSettings);
+                });
             }
 
-            const display = isOwnPkMessage(message) && settings.store.displayLocal !== "" ? settings.store.displayLocal : settings.store.displayOther;
-            const resultText = replaceTags(display, message, settings.store.data);
+            const display = isMe && settings.store.displayLocal !== "" ? settings.store.displayLocal : settings.store.displayOther;
+            const resultText = replaceTags(display, message, discordUsername, pluralKit.api);
 
-            return <span style={{
-                color: `#${color}`,
-            }}>{resultText}</span>;
-        } catch {
+            return <span style={{color: `#${color}`}}>{resultText}</span>;
+        } catch (e) {
+            console.error(e);
             return <>{prefix}{author?.nick}</>;
         }
     },
@@ -154,17 +367,31 @@ export default definePlugin({
 
     async start() {
         await loadData();
-        if (settings.store.data === "{}")
+        if (settings.store.data === "{}") {
             await loadAuthors();
+        }
+
+        addDecoration("pk-proxied", props => {
+            if (!settings.store.pkIcon)
+                return null;
+            if (!isPk(props.message))
+                return null;
+            return <ErrorBoundary noop>
+                <img src="https://pluralkit.me/favicon.png" height="17" style={{
+                    marginLeft: 4,
+                    verticalAlign: "sub"
+                }}/>
+            </ErrorBoundary>;
+        });
 
         addButton("pk-edit", msg => {
             if (!msg) return null;
-            if (!isOwnPkMessage(msg)) return null;
+            if (!isOwnPkMessage(msg, pluralKit.api)) return null;
 
             return {
                 label: "Edit",
                 icon: () => {
-                    return <EditIcon/>;
+                    return <PencilIcon/>;
                 },
                 message: msg,
                 channel: ChannelStore.getChannel(msg.channel_id),
@@ -175,10 +402,12 @@ export default definePlugin({
 
         addButton("pk-delete", msg => {
             if (!msg) return null;
-            if (!isOwnPkMessage(msg)) return null;
+            if (!isOwnPkMessage(msg, pluralKit.api)) return null;
+            if (!shiftKey) return null;
 
             return {
                 label: "Delete",
+                dangerous: true,
                 icon: () => {
                     return <DeleteIcon/>;
                 },
@@ -193,18 +422,28 @@ export default definePlugin({
         this.preEditListener = addPreEditListener((channelId, messageId, messageObj) => {
             if (isPk(MessageStore.getMessage(channelId, messageId))) {
                 const { guild_id } = ChannelStore.getChannel(channelId);
-                MessageActions.sendMessage(channelId, {
-                    reaction: false,
-                    content: "pk;e https://discord.com/channels/" + guild_id + "/" + channelId + "/" + messageId + " " + messageObj.content
-                });
-                // return { cancel: true };
+                MessageActions.sendMessage("1276796961227276338", {
+                        content: "pk;e https://discord.com/channels/" + guild_id + "/" + channelId + "/" + messageId + " " + messageObj.content},
+                    false);
+                //return { cancel: true };
             }
         });
+
+        document.addEventListener("keydown", onKey);
+        document.addEventListener("keyup", onKey);
     },
     stop() {
         removeButton("pk-edit");
         removeButton("pk-delete");
+        document.removeEventListener("keydown", onKey);
+        document.removeEventListener("keyup", onKey);
     },
 });
 
+var shiftKey = false;
+function onKey(e: KeyboardEvent) {
+    shiftKey = e.shiftKey;
+}
 
+var userPopoutMessage: Message | null = null;
+var userPopoutMessageSender: any = null;
