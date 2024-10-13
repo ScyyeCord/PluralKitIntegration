@@ -306,7 +306,7 @@ export default definePlugin({
         const prefix = isRepliedMessage && withMentionPrefix ? "@" : "";
 
         try {
-            const discordUsername = author.nick ?? message.author.globalName ?? message.author.username;
+            let discordUsername = author.nick ?? message.author.globalName ?? message.author.username;
 
             if (!isPk(message))
                 return <>{prefix}{discordUsername}</>;
@@ -314,6 +314,8 @@ export default definePlugin({
             // PK mesasage, disable bot tag
             if (decorations)
                 decorations[0] = null;
+
+            discordUsername = message.author.username ?? author.nick ?? message.author.globalName;
 
             if (!settings.store.colorNames)
                 return <>{prefix}{discordUsername}</>;
