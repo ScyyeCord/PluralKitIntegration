@@ -317,6 +317,9 @@ export default definePlugin({
 
             discordUsername = message.author.username ?? author.nick ?? message.author.globalName;
 
+            // U-FE0F is the Emoji variant selector. This converts pictographics to emoticons
+            discordUsername = discordUsername.replace(/\p{Emoji}/ug, "$&\uFE0F")
+
             if (!settings.store.colorNames)
                 return <>{prefix}{discordUsername}</>;
 
