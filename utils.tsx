@@ -10,7 +10,13 @@ import { findByCode } from "@webpack";
 import { ChannelStore, FluxDispatcher, UserStore } from "@webpack/common";
 import { Message } from "discord-types/general";
 
-import pluralKit, { settings } from "./index";
+import { settings } from "./index";
+import {
+    Member,
+    MemberGuildSettings, PKMessage,
+    System,
+    SystemGuildSettings
+} from "./PluralKitApi";
 
 
 // I dont fully understand how to use datastores, if I used anything incorrectly please let me know
@@ -50,8 +56,8 @@ export function replaceTags(content: string, message: Message, localSystemData: 
 
     // prioritize guild settings, then system/member settings
     const { tag } = systemSettings??system;
-    const name = memberSettings.display_name || (author.member.display_name??author.member.name);
-    const avatar = memberSettings ? memberSettings.avatar_url : (author.member.avatar_url ?? author.member.webhook_avatar_url ?? author.system.avatar_url ?? "");
+    const name = memberSettings ? memberSettings.display_name ?? (author.member.display_name??author.member.name)  : (author.member.display_name??author.member.name)
+    const avatar = memberSettings ? memberSettings.avatar_url ?? "" : (author.member.avatar_url ?? author.member.webhook_avatar_url ?? author.system.avatar_url ?? "");
 
     return content
         .replace(/{tag}/g, tag??"")
@@ -146,3 +152,38 @@ export function getAuthorOfMessage(message: Message) {
     return authors[authorData];
 }
 
+const API_URL = "https://api.pluralkit.me/v2/";
+const API_HEADERS = {
+    "Content-Type": "application/json",
+    "User-Agent": "Scyye Vencord/1.0 (contact @scyye on Discord for any issues)"
+}
+async function request<T>(endpoint: string) {
+    return fetch(API_URL + endpoint, {
+        method:"GET",
+        headers: API_HEADERS,
+    }).then(res => res.json() as T);
+}
+
+export async function getSystem(id: string) {
+    return await request<System>(`systems/${id}`);
+}
+
+export async function getMessage(id: string) {
+    return await request<PKMessage>(`messages/${id}`);
+}
+
+export async function getSystemGuildSettings(system: string, guild: string) {
+    return await request<SystemGuildSettings>(`systems/${system}/guilds/${guild}`);
+}
+
+export async function getMembers(system: string) {
+    return await request<Member[]>(`systems/${system}/members`);
+}
+
+export async function getMember(member: string) {
+    return await request<Member>(`members/${member}`);
+}
+
+export async function getMemberGuildSettings(member: string, guild: string) {
+    return await request<MemberGuildSettings>(`members/${member}/guilds/${guild}`);
+}

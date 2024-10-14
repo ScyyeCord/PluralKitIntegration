@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { addPreEditListener } from "@api/MessageEvents";
+import { addPreEditListener, removePreEditListener } from "@api/MessageEvents";
 import { addButton, removeButton } from "@api/MessagePopover";
 import { definePluginSettings } from "@api/Settings";
 import { DeleteIcon } from "@components/Icons";
@@ -129,30 +129,27 @@ export default definePlugin({
     isOwnMessage: (message: Message) => isOwnPkMessage(message) || message.author.id === UserStore.getCurrentUser().id,
 
     renderUsername: ({ author, message, isRepliedMessage, withMentionPrefix }) => {
+
         const prefix = isRepliedMessage && withMentionPrefix ? "@" : "";
-        try {
-            const discordUsername = author.nick??author.displayName??author.username;
-            if (!isPk(message)) {
-                return <>{prefix}{discordUsername}</>;
-            }
-
-
-            let color: string = "666666";
-            const pkAuthor = getAuthorOfMessage(message);
-
-            if (pkAuthor.member && settings.store.colorNames) {
-                color = pkAuthor.member.color??color;
-            }
-
-            const display = isOwnPkMessage(message) && settings.store.displayLocal !== "" ? settings.store.displayLocal : settings.store.displayOther;
-            const resultText = replaceTags(display, message, settings.store.data);
-
-            return <span style={{
-                color: `#${color}`,
-            }}>{resultText}</span>;
-        } catch {
-            return <>{prefix}{author?.nick}</>;
+        const discordUsername = author.nick??author.displayName??author.username;
+        if (!isPk(message)) {
+            return <>{prefix}{discordUsername}</>;
         }
+
+
+        let color: string = "666666";
+        const pkAuthor = getAuthorOfMessage(message);
+
+        if (pkAuthor.member && settings.store.colorNames) {
+            color = pkAuthor.member.color??color;
+        }
+
+        const display = isOwnPkMessage(message) && settings.store.displayLocal !== "" ? settings.store.displayLocal : settings.store.displayOther;
+        const resultText = replaceTags(display, message, settings.store.data);
+
+        return <span style={{
+            color: `#${color}`,
+        }}>{resultText}</span>;
     },
 
     async start() {
@@ -207,6 +204,7 @@ export default definePlugin({
     stop() {
         removeButton("pk-edit");
         removeButton("pk-delete");
+        removePreEditListener(this.preEditListener)
     },
 });
 
