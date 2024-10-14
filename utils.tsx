@@ -4,32 +4,35 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { AxiosError } from "axios"
 import { DataStore } from "@api/index";
 import { insertTextIntoChatInputBox } from "@utils/discord";
 import { findByCode } from "@webpack";
 import { ChannelStore, FluxDispatcher, UserStore } from "@webpack/common";
 import { Message } from "discord-types/general";
 
-import { Member, MemberGuildSettings, PKAPI, System, SystemGuildSettings } from "./api";
+import { Switch, Member, MemberGuildSettings, PKAPI, System, SystemGuildSettings } from "./api";
 import pluralKit, { settings } from "./index";
 
 
 // I dont fully understand how to use datastores, if I used anything incorrectly please let me know
 export const DATASTORE_KEY = "pk";
-export let authors: Record<string, Author> = {};
+export let authors: Record<string, Author | null> = {};
 
 export let localSystemNames: string[] = [];
 export let localSystem: Author[] = [];
 
+export const RELOAD_TIMEOUT = 3*1000;
+
 export interface Author {
-    member: Member;
+    member?: Member;
     system: System;
-    guildSettings: Map<string, MemberGuildSettings>;
-    systemSettings: Map<string, SystemGuildSettings>;
+    guildSettings?: Map<string, MemberGuildSettings>;
+    systemSettings?: Map<string, SystemGuildSettings>;
+    switch?: Switch;
+    lastUpdated: number;
 }
 
-export function isPk(msg: Message) {
+export function isPk(msg: Message | null) {
     return (msg && msg.applicationId === "466378653216014359");
 }
 
@@ -37,25 +40,21 @@ export function isOwnPkMessage(message: Message, pk: PKAPI): boolean {
     if (!isPk(message)) return false;
     if ([[], {}, undefined].includes(localSystem)) return false;
 
-    const authorMemberID: string = getAuthorOfMessage(message, pk)?.member.id;
-    return (localSystem??[]).map(author => author.member.id).some(id => id === authorMemberID);
+    const authorMemberID = getAuthorOfMessage(message, pk)?.member?.id;
+    if (!authorMemberID) return false;
+
+    return (localSystem??[]).map(author => authorMemberID).some(id => id === authorMemberID);
 }
 
-export function replaceTags(content: string, message: Message, webhookName: string, pk: PKAPI) {
-    const author = getAuthorOfMessage(message, pk);
-
+export function replaceTags(content: string, message: Message, webhookName: string, author: Author) {
     if (!author?.member)
         throw new TypeError("The member who wrote this message cannot be found! Were they deleted?");
 
     const messageGuildID = ChannelStore.getChannel(message.channel_id).guild_id;
 
-    var systemSettings: SystemGuildSettings = undefined;
-    if (author.systemSettings)
-        systemSettings = author.systemSettings[messageGuildID];
+    var systemSettings = author.systemSettings?.[messageGuildID];
 
-    var memberSettings: MemberGuildSettings = undefined;
-    if (author.memberSettings)
-        memberSettings = author.guildSettings[messageGuildID];
+    var memberSettings = author.guildSettings?.[messageGuildID];
 
     const { system } = author;
 
@@ -79,7 +78,7 @@ export function replaceTags(content: string, message: Message, webhookName: stri
 export async function loadAuthors() {
     authors = await DataStore.get<Record<string, Author>>(DATASTORE_KEY) ?? {};
     localSystem = JSON.parse(settings.store.data) ?? {};
-    localSystemNames = localSystem.map(author => author.member.display_name??author.member.name);
+    localSystemNames = localSystem.map(author => author.member?.display_name??author.member?.name ?? "");
 }
 
 export async function loadData() {
@@ -88,7 +87,10 @@ export async function loadData() {
         settings.store.data = "{}";
         return;
     }
+
     const localSystem: Author[] = [];
+
+    console.log(system);
 
     (system.members??(await system.getMembers())).forEach((member: Member) => {
         localSystem.push({
@@ -129,16 +131,21 @@ export function generateAuthorData(discordAuthor) {
 
 export function getAuthorOfMessage(message: Message, pk: PKAPI) {
     const authorData = generateAuthorData(message.author);
-    let author: Author = authors[authorData]??undefined;
+    let author = authors[authorData] ?? undefined;
 
-    if (author != undefined)
+    if (author?.lastUpdated === null || Date.now() <= (author?.lastUpdated ?? 0) + RELOAD_TIMEOUT)
         return author;
 
-    if (author === null)
-        return null;
+    if (author)
+        author.lastUpdated = Date.now();
 
     pk.getMessage({ message: message.id }).then(msg => {
-        author = ({ member: msg.member as Member, system: msg.system as System, systemSettings: new Map(), guildSettings: new Map() });
+        if (!author)
+            author = {system: msg.system as System, lastUpdated: Date.now()};
+        author.member = msg.member as Member;
+        author.system = msg.system as System;
+        author.systemSettings = new Map();
+        author.guildSettings = new Map();
 
         authors[authorData] = author;
         DataStore.set(DATASTORE_KEY, authors);
@@ -146,6 +153,46 @@ export function getAuthorOfMessage(message: Message, pk: PKAPI) {
 
     authors[authorData] = null;
 
-    return undefined;
+    return author;
 }
 
+export function getUserSystem(discAuthor: string, pk: PKAPI) {
+    let author = authors["@"+discAuthor];
+
+    if (author === null || Date.now() <= (author?.lastUpdated ?? 0) + RELOAD_TIMEOUT)
+        return author;
+
+    if (author)
+        author.lastUpdated = Date.now();
+
+    pk.getSystem({system: discAuthor}).then(system => {
+        if (!system) return;
+
+        if (!author)
+            author = {system: system, lastUpdated: Date.now()};
+        else {
+            author.system = system
+        }
+
+        authors["@"+discAuthor] = author;
+
+        pluralKit.api.getFronters({system: system.id}).then((switchObj) => {
+            if (!switchObj) return;
+            if (!author) return;
+
+            author.switch = switchObj;
+
+            if (switchObj.members) {
+                const [primaryFronter] = switchObj.members.values();
+                if (primaryFronter)
+                    author.member = primaryFronter;
+            }
+
+            authors["@"+discAuthor] = author;
+        });
+    });
+
+    authors["@"+discAuthor] = authors["@"+discAuthor] ?? null;
+
+    return author;
+}

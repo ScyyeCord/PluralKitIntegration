@@ -47,14 +47,16 @@ import {
     loadAuthors, loadData,
     localSystem,
     replaceTags,
+    getUserSystem,
 } from "./utils";
 
 function GetAuthorMenuItem(author: Author, message: Message) {
+    if (!author.member) return null;
     return (
         <Menu.MenuItem
             id={"pk_menu_item_" + author.member.uuid}
             iconLeft={() =>
-                (<Avatar className="pk-menu-icon" src={author.member.avatar_url ?? author.system.avatar_url ?? "https://pluralkit.me/favicon.png"} size="SIZE_20"/>)
+                (<Avatar className="pk-menu-icon" src={author.member?.avatar_url ?? author.system.avatar_url ?? "https://pluralkit.me/favicon.png"} size="SIZE_20"/>)
             }
             label={
                 <div className="pk-menu-item">
@@ -64,7 +66,7 @@ function GetAuthorMenuItem(author: Author, message: Message) {
             action={() => {
                 const { guild_id } = ChannelStore.getChannel(message.channel_id);
                 MessageActions.sendMessage(message.channel_id, // Replace with pluralkit's channel ID once reproxying works in DMs: 1276796961227276338
-                                           {content: "pk;reproxy https://discord.com/channels/" + guild_id + "/" + message.channel_id + "/" + message.id + " " + author.member.name},
+                                           {content: "pk;reproxy https://discord.com/channels/" + guild_id + "/" + message.channel_id + "/" + message.id + " " + author.member?.name},
                                            false);
                 }
             }
@@ -193,6 +195,13 @@ export default definePlugin({
     },
     patches: [
         {
+            find: "getCurrentUser(){",
+            replacement: {
+                match: / I\[d\.default\.getId\(\)\]/,
+                replace: " $self.getCurrentUser($&)"
+            }
+        },
+        {
             find: ".hasAvatarForGuild(null==",
             replacement: {
                 match: /\i\.pronouns/,
@@ -246,6 +255,18 @@ export default definePlugin({
             }
         },
     ],
+
+    getCurrentUser: (defaultUser) => {
+        if (!localSystem?.length) return defaultUser;
+
+        const fronters = getUserSystem(defaultUser.id, pluralKit.api)?.switch?.memebers?.[0];
+        if (!fronters) return defaultUser;
+
+        var filtered = localSystem.filter((author) => {return author.member?.id == fronters[0]});
+        if (!filtered[0].member) return defaultUser;
+        defaultUser.globalName = filtered[0].member?.display_name;
+        return defaultUser;
+    },
 
     getUserPopoutMessageSender: ({channelId, messageId, user}) => {
         if (user) {
@@ -308,7 +329,8 @@ export default definePlugin({
         try {
             let discordUsername = author.nick ?? message.author.globalName ?? message.author.username;
 
-            if (!isPk(message))
+            const userSystem = getUserSystem(message.author.id, pluralKit.api)
+            if (!isPk(message) && !userSystem)
                 return <>{prefix}{discordUsername}</>;
 
             // PK mesasage, disable bot tag
@@ -323,15 +345,18 @@ export default definePlugin({
             if (!settings.store.colorNames)
                 return <>{prefix}{discordUsername}</>;
 
-            const pkAuthor = getAuthorOfMessage(message, pluralKit.api);
+            const pkAuthor = userSystem ?? getAuthorOfMessage(message, pluralKit.api);
 
             // A PK message without an author. It's likely still loading
             if (!pkAuthor)
                 return <span style={{color: '#555555'}}>{prefix}{discordUsername}</span>;
 
             // A PK message that contains an author but no member, meaning the member was likely deleted
-            if (!pkAuthor.member)
-                return <span style={{color: '#9A2D22'}}>{prefix}{discordUsername}</span>;
+            if (!pkAuthor.member) {
+                // If this is a user system, don't apply the red coloration
+                let style = !userSystem ? {color: '#9A2D22'} : undefined;
+                return <span style={style}>{prefix}{discordUsername}</span>;
+            }
 
             // A valid member exists, set the author to not be a bot so we can link back to the sender
             message.author.bot = false;
@@ -343,7 +368,7 @@ export default definePlugin({
             const isMe = isOwnPkMessage(message, pluralKit.api);
 
             const messageGuildID = ChannelStore.getChannel(message.channel)?.guild_id;
-            if (isMe && messageGuildID) {
+            if (isMe && messageGuildID && !userSystem) {
                 author.member.getGuildSettings(messageGuildID).then(guildSettings => {
                     author.guildSettings.set(messageGuildID, guildSettings);
                 });
@@ -353,8 +378,14 @@ export default definePlugin({
                 });
             }
 
-            const display = isMe && settings.store.displayLocal !== "" ? settings.store.displayLocal : settings.store.displayOther;
-            const resultText = replaceTags(display, message, discordUsername, pluralKit.api);
+            let display: string;
+            if (userSystem)
+                display = "{name} {tag}";
+            else if (isMe && settings.store.displayLocal !== "")
+                display = settings.store.displayLocal;
+            else
+                display = settings.store.displayOther;
+            const resultText = replaceTags(display, message, discordUsername, pkAuthor);
 
             return <span style={{color: `#${color}`}}>{resultText}</span>;
         } catch (e) {

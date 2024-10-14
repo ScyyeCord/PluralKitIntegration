@@ -108,7 +108,7 @@ class PKAPI {
         let sys: System;
         let resp: { data: Partial<System>; };
         try {
-            if(token) {
+            if(!data.system) {
                 resp = await this.handle(ROUTES[this.#_version].GET_OWN_SYSTEM(), { token });
                 sys = new System(this, resp.data);
             } else {
@@ -653,7 +653,7 @@ class PKAPI {
 	}) {
         if(this.version < 2) throw new Error("Groups are only available for API version 2.");
 
-        var token = settings.store.token || data.token;
+        var token = settings.store.token ?? data.token;
         if(!token) throw new Error("POST requires a token.");
         if(!data.group) throw new Error("Must provide a group ID.");
         if(!data.members || !Array.isArray(data.members))
@@ -676,7 +676,7 @@ class PKAPI {
 	*/
 
     async createSwitch(data: RequestData<Partial<ISwitch>>) {
-        var token = settings.store.token || data.token;
+        var token = settings.store.token ?? data.token;
         if(!token) throw new Error("POST requires a token.");
 
         var body: {
@@ -712,7 +712,7 @@ class PKAPI {
 		limit?: number,
 	}) {
         var system = data.system ?? "@me";
-        var token = settings.store.token || data.token;
+        var token = settings.store.token ?? data.token;
         var { before, limit } = data;
         let switches: Switch[] = [];
         try {
@@ -746,7 +746,7 @@ class PKAPI {
 	}) {
         if(this.version < 2) throw new Error("Individual switches are only available for API version 2.");
 
-        var token = settings.store.token || data.token;
+        var token = settings.store.token ?? data.token;
         var system = data.system ?? "@me";
         if(!data.switch) throw new Error("Must provide a switch ID.");
 
@@ -766,7 +766,7 @@ class PKAPI {
 		token?: string,
 		system?: string
 	}) {
-        var token = settings.store.token || data.token;
+        var token = settings.store.token ?? data.token;
         var system = data.system ?? "@me";
         try {
             var resp = await this.handle(ROUTES[this.#_version].GET_FRONTERS(system), { token });
