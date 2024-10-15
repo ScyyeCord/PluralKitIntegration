@@ -347,15 +347,15 @@ export default definePlugin({
 
             const pkAuthor = userSystem ?? getAuthorOfMessage(message, pluralKit.api);
 
+            // A PK message without an author. It's likely still loading
+            if (!pkAuthor)
+                return <span style={{color: '#555555'}}>{prefix}{username}</span>;
+
             if (pkAuthor.switches) {
                 const [messageSwitch] = pkAuthor.switches?.values()?.filter((switchObj) => {return message.timestamp >= switchObj.timestamp});
 
                 pkAuthor.member = messageSwitch?.members ? messageSwitch.members.values().toArray()[0] ?? pkAuthor.member : undefined;
             }
-
-            // A PK message without an author. It's likely still loading
-            if (!pkAuthor)
-                return <span style={{color: '#555555'}}>{prefix}{username}</span>;
 
             // A PK message that contains an author but no member, meaning the member was likely deleted
             if (!pkAuthor.member) {
