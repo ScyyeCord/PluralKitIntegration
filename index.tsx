@@ -195,6 +195,13 @@ export default definePlugin({
     },
     patches: [
         {
+            find: "let{colorRoleId:",
+            replacement: {
+                match: /let{colorRoleId:/,
+                replace: "e.nick=$self.modifyNick(e);$&"
+            }
+        },
+        {
             find: "getCurrentUser(){",
             replacement: {
                 match: / I\[d\.default\.getId\(\)\]/,
@@ -321,6 +328,28 @@ export default definePlugin({
         return pkAuthor.member.description ?? pkAuthor.system.description;
     },
 
+    modifyNick: ({user, nick}) => {
+        if (!user)
+            return nick;
+
+        const pkAuthor = getUserSystem(user.id, pluralKit.api);
+
+        if (!pkAuthor)
+            return nick;
+
+        if (!pkAuthor.switches)
+            return nick;
+
+        const [messageSwitch] = pkAuthor.switches?.values();
+        const member = messageSwitch?.members ? messageSwitch.members.values().toArray()[0] ?? pkAuthor.member : undefined;
+
+        if (!member)
+            return nick;
+
+        nick = member.display_name ?? member.name;
+        return nick;
+    },
+
     isOwnMessage: (message: Message) => isOwnPkMessage(message, pluralKit.api) || message.author.id === UserStore.getCurrentUser().id,
 
     renderUsername: ({ author, decorations, message, isRepliedMessage, withMentionPrefix }) => {
@@ -340,7 +369,7 @@ export default definePlugin({
             let username = userSystem ? discordUsername : message.author.username ?? author.nick ?? message.author.globalName;
 
             // U-FE0F is the Emoji variant selector. This converts pictographics to emoticons
-            username = username.replace(/\p{Emoji}/ug, "$&\uFE0F")
+            username = username.replace(/\p{Emoji}/ug, "$&\uFE0F");
 
             if (!settings.store.colorNames)
                 return <>{prefix}{username}</>;
