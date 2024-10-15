@@ -350,8 +350,7 @@ export default definePlugin({
             if (pkAuthor.switches) {
                 const [messageSwitch] = pkAuthor.switches?.values()?.filter((switchObj) => {return message.timestamp >= switchObj.timestamp});
 
-                if (messageSwitch.members)
-                    pkAuthor.member = messageSwitch.members.values().toArray()[0] ?? pkAuthor.member;
+                pkAuthor.member = messageSwitch?.members ? messageSwitch.members.values().toArray()[0] ?? pkAuthor.member : undefined;
             }
 
             // A PK message without an author. It's likely still loading
