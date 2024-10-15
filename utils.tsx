@@ -151,7 +151,7 @@ export function getAuthorOfMessage(message: Message, pk: PKAPI) {
         DataStore.set(DATASTORE_KEY, authors);
     });
 
-    authors[authorData] = null;
+    authors[authorData] = authors[authorData] ?? null;
 
     return author;
 }
