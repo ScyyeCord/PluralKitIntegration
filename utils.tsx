@@ -28,7 +28,7 @@ export interface Author {
     system: System;
     guildSettings?: Map<string, MemberGuildSettings>;
     systemSettings?: Map<string, SystemGuildSettings>;
-    switch?: Switch;
+    switches?: Map<Switch>;
     lastUpdated: number;
 }
 
@@ -166,7 +166,7 @@ export function getUserSystem(discAuthor: string, pk: PKAPI) {
         author.lastUpdated = Date.now();
 
     pk.getSystem({system: discAuthor}).then(system => {
-        if (!system) return;
+        if (!system?.id) return;
 
         if (!author)
             author = {system: system, lastUpdated: Date.now()};
@@ -176,16 +176,17 @@ export function getUserSystem(discAuthor: string, pk: PKAPI) {
 
         authors["@"+discAuthor] = author;
 
-        pluralKit.api.getFronters({system: system.id}).then((switchObj) => {
+        pluralKit.api.getSwitches({system: system.id}).then((switchObj) => {
             if (!switchObj) return;
             if (!author) return;
 
-            author.switch = switchObj;
+            author.switches = switchObj;
 
-            if (switchObj.members) {
-                const [primaryFronter] = switchObj.members.values();
-                if (primaryFronter)
-                    author.member = primaryFronter;
+            const [latestSwitch] = switchObj.values();
+
+            if (latestSwitch?.members) {
+                const [primaryFronter] = latestSwitch.members.values();
+                author.member = primaryFronter;
             }
 
             authors["@"+discAuthor] = author;

@@ -327,7 +327,7 @@ export default definePlugin({
         const prefix = isRepliedMessage && withMentionPrefix ? "@" : "";
 
         try {
-            let discordUsername = author.nick ?? message.author.globalName ?? message.author.username;
+            const discordUsername = author.nick ?? message.author.globalName ?? message.author.username;
 
             const userSystem = getUserSystem(message.author.id, pluralKit.api)
             if (!isPk(message) && !userSystem)
@@ -337,25 +337,30 @@ export default definePlugin({
             if (decorations)
                 decorations[0] = null;
 
-            discordUsername = message.author.username ?? author.nick ?? message.author.globalName;
+            let username = userSystem ? discordUsername : message.author.username ?? author.nick ?? message.author.globalName;
 
             // U-FE0F is the Emoji variant selector. This converts pictographics to emoticons
-            discordUsername = discordUsername.replace(/\p{Emoji}/ug, "$&\uFE0F")
+            username = username.replace(/\p{Emoji}/ug, "$&\uFE0F")
 
             if (!settings.store.colorNames)
-                return <>{prefix}{discordUsername}</>;
+                return <>{prefix}{username}</>;
 
             const pkAuthor = userSystem ?? getAuthorOfMessage(message, pluralKit.api);
 
+            if (pkAuthor.switches) {
+                const [messageSwitch] = pkAuthor.switches?.values()?.filter((switchObj) => {return message.timestamp >= switchObj.timestamp});
+                pkAuthor.member = messageSwitch.members.values().toArray()[0] ?? pkAuthor.member;
+            }
+
             // A PK message without an author. It's likely still loading
             if (!pkAuthor)
-                return <span style={{color: '#555555'}}>{prefix}{discordUsername}</span>;
+                return <span style={{color: '#555555'}}>{prefix}{username}</span>;
 
             // A PK message that contains an author but no member, meaning the member was likely deleted
             if (!pkAuthor.member) {
                 // If this is a user system, don't apply the red coloration
                 let style = !userSystem ? {color: '#9A2D22'} : undefined;
-                return <span style={style}>{prefix}{discordUsername}</span>;
+                return <span style={style}>{prefix}{username}</span>;
             }
 
             // A valid member exists, set the author to not be a bot so we can link back to the sender
@@ -379,12 +384,14 @@ export default definePlugin({
             }
 
             let display: string;
+
             if (userSystem)
                 display = "{name} {tag}";
             else if (isMe && settings.store.displayLocal !== "")
                 display = settings.store.displayLocal;
             else
                 display = settings.store.displayOther;
+
             const resultText = replaceTags(display, message, discordUsername, pkAuthor);
 
             return <span style={{color: `#${color}`}}>{resultText}</span>;
