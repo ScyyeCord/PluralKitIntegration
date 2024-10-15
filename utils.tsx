@@ -21,7 +21,7 @@ export let authors: Record<string, Author | null> = {};
 export let localSystemNames: string[] = [];
 export let localSystem: Author[] = [];
 
-export const RELOAD_TIMEOUT = 3*1000;
+export const RELOAD_TIMEOUT = 60*1000;
 
 export interface Author {
     member?: Member;
