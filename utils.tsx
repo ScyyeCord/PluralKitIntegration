@@ -43,7 +43,7 @@ export function isOwnPkMessage(message: Message, pk: PKAPI): boolean {
     const authorMemberID = getAuthorOfMessage(message, pk)?.member?.id;
     if (!authorMemberID) return false;
 
-    return (localSystem??[]).map(author => authorMemberID).some(id => id === authorMemberID);
+    return (localSystem??[]).map(author => author.member.id).some(id => id === authorMemberID);
 }
 
 export function replaceTags(content: string, message: Message, webhookName: string, author: Author) {
