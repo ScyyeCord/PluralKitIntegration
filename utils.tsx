@@ -137,6 +137,7 @@ export function getAuthorOfMessage(message: Message) {
 
     getMessage(message.id).then((msg: PKMessage) => {
         author = ({ messageIds: [msg.id], member: msg.member as Member, system: msg.system as System, systemSettings: new Map(), guildSettings: new Map() });
+        console.log(author.member)
         getMemberGuildSettings(author.member.id, ChannelStore.getChannel(msg.channel).guild_id).then(guildSettings => {
             author.guildSettings?.set(ChannelStore.getChannel(msg.channel).guild_id, guildSettings);
         });

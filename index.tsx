@@ -108,10 +108,16 @@ export default definePlugin({
     patches: [
         {
             find: '?"@":"")',
-            replacement: {
-                match: /(?<=onContextMenu:\i,children:).*?\)}/,
-                replace: "$self.renderUsername(arguments[0])}"
-            }
+            replacement: [
+                {
+                    match: /(?<=onContextMenu:\i,children:).*?\)}/,
+                    replace: "$self.renderUsername(arguments[0])}"
+                },
+                {
+                    match: /Vencord.Plugins.plugins\["ShowMeYourName"]\.renderUsername\(arguments\[0]\)/,
+                    replace: "$self.renderUsername(arguments[0])}"
+                }
+            ]
         },
         // make up arrow to edit most recent message work
         // this might conflict with messageLogger, but to be honest, if you're
