@@ -27,6 +27,8 @@ export let localSystemNames: string[] = [];
 export let localSystemJson: string = "";
 export let localSystem: Author[] = [];
 
+export const authorCache = new Map<string, Author>();
+
 export interface Author {
     messageIds: string[];
     member: Member;
@@ -46,30 +48,31 @@ export function isOwnPkMessage(message: Message): boolean {
     return (localSystem).some(author => author.member.id === authorId);
 }
 
+// TODO: possibly better to do .replaceAll() instead of .replace() for multiple replacements
 export function replaceTags(content: string, message: Message, localSystemData: string) {
     const author = getAuthorOfMessage(message);
+    if (!author) return "Unknown author";
     const localSystem: Author[] = JSON.parse(localSystemData);
 
-    const systemSettings: SystemGuildSettings = author.systemSettings[ChannelStore.getChannel(message.channel_id).guild_id];
-    const memberSettings: MemberGuildSettings = author.guildSettings[ChannelStore.getChannel(message.channel_id).guild_id];
-    const { system } = author;
+    const { guild_id } = ChannelStore.getChannel(message.channel_id);
+    const systemSettings = author.systemSettings?.[guild_id] ?? {};
+    const memberSettings = author.guildSettings?.[guild_id] ?? {};
+    const { system, member } = author;
 
-    // prioritize guild settings, then system/member settings
-    const { tag } = systemSettings??system;
-    const name = memberSettings ? memberSettings.display_name ?? (author.member.display_name??author.member.name)  : (author.member.display_name??author.member.name)
-    const avatar = memberSettings ? memberSettings.avatar_url ?? "" : (author.member.avatar_url ?? author.member.webhook_avatar_url ?? author.system.avatar_url ?? "");
+    const replacements = {
+        "{tag}": systemSettings.tag ?? system.tag ?? "",
+        "{name}": memberSettings.display_name ?? member.display_name ?? member.name ?? "",
+        "{memberid}": member.id ?? "",
+        "{pronouns}": member.pronouns ?? "",
+        "{systemid}": system.id ?? "",
+        "{systemname}": system.name ?? "",
+        "{color}": member.color ?? "ffffff",
+        "{avatar}": memberSettings.avatar_url ?? member.avatar_url ?? member.webhook_avatar_url ?? system.avatar_url ?? "",
+        "{messagecount}": author.messageIds.length.toString(),
+        "{systemmessagecount}": localSystem.reduce((acc, { messageIds }) => acc + messageIds.length, 0).toString()
+    };
 
-    return content
-        .replace(/{tag}/g, tag??"")
-        .replace(/{name}/g, name??"")
-        .replace(/{memberid}/g, author.member.id??"")
-        .replace(/{pronouns}/g, author.member.pronouns??"")
-        .replace(/{systemid}/g, author.system.id??"")
-        .replace(/{systemname}/g, author.system.name??"")
-        .replace(/{color}/g, author.member.color??"ffffff")
-        .replace(/{avatar}/g, avatar??"")
-        .replace(/{messagecount}/g, author.messageIds.length.toString()??"")
-        .replace(/{systemmessagecount}/g, localSystem.map(author => author.messageIds.length).reduce((acc, val) => acc + val).toString());
+    return content.replace(/{tag}|{name}|{memberid}|{pronouns}|{systemid}|{systemname}|{color}|{avatar}|{messagecount}|{systemmessagecount}/g, match => replacements[match]);
 }
 
 export async function loadAuthors() {
@@ -86,18 +89,19 @@ export async function loadData() {
     }
     const localSystem: Author[] = [];
 
-    (await getMembers(system.id)).forEach((member: Member) => {
-        localSystem.push({
+    const members = await getMembers(system.id);
+    await Promise.all(members.map(async (member: Member) => {
+        const author: Author = {
             messageIds: [],
             member,
             system,
             guildSettings: new Map(),
             systemSettings: new Map()
-        });
-    });
+        };
+        localSystem.push(author);
+    }));
 
     settings.store.data = JSON.stringify(localSystem);
-
     await loadAuthors();
 }
 
@@ -124,20 +128,29 @@ export function generateAuthorData(message: Message) {
     return `${message.author.username}##${message.author.avatar}`;
 }
 
-export function getAuthorOfMessage(message: Message) {
+export function getAuthorOfMessage(message: Message): Author {
     const authorData = generateAuthorData(message);
-    let author: Author = authors[authorData]??undefined;
+    if (authorCache.has(authorData)) {
+        return authorCache.get(authorData)??{} as Author;
+    }
 
+    let author: Author = authors[authorData] ?? undefined;
     if (author) {
         author.messageIds.push(message.id);
         authors[authorData] = author;
         DataStore.set(DATASTORE_KEY, authors);
+        authorCache.set(authorData, author);
         return author;
     }
 
     getMessage(message.id).then((msg: PKMessage) => {
-        author = ({ messageIds: [msg.id], member: msg.member as Member, system: msg.system as System, systemSettings: new Map(), guildSettings: new Map() });
-        console.log(author.member)
+        author = {
+            messageIds: [msg.id],
+            member: msg.member as Member,
+            system: msg.system as System,
+            systemSettings: new Map(),
+            guildSettings: new Map()
+        };
         getMemberGuildSettings(author.member.id, ChannelStore.getChannel(msg.channel).guild_id).then(guildSettings => {
             author.guildSettings?.set(ChannelStore.getChannel(msg.channel).guild_id, guildSettings);
         });
@@ -148,9 +161,10 @@ export function getAuthorOfMessage(message: Message) {
 
         authors[authorData] = author;
         DataStore.set(DATASTORE_KEY, authors);
+        authorCache.set(authorData, author);
     });
 
-    return authors[authorData];
+    return authors[authorData]??{} as Author;
 }
 
 const API_URL = "https://api.pluralkit.me/v2/";
